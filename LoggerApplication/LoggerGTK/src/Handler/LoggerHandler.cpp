@@ -1,20 +1,23 @@
 #include "LoggerHandler.hpp"
 #include <cstring>
-
-
+#include <chrono>
+#include <thread>
+#include <fstream>
+#include <string>
 LoggerHandler::LoggerHandler()
 {
     m_Filter.SetAllMessages(&m_LogMessageList);
     memset(m_LogLevels, true, sizeof(m_LogLevels));
-
     m_Filter.SetLevelFilter(m_LogLevels);
     messageListMutex.lock();
     m_Filter.ApplyFilter();
     messageListMutex.unlock();
+    m_MessageReceived = false;
     m_FilteredLogMessageList = &m_Filter.GetFilteredList();
+    std::thread *displayerThread = new std::thread(&LoggerHandler::DisplayText, this);
 }
 
-void LoggerHandler::SetCallBack(void (*callBack)(LogMessage *))
+void LoggerHandler::SetCallBack(void (*callBack)(std::vector<LogMessage *>))
 {
     m_Listener.SetMessageCallBack(callBack);
 }
@@ -46,28 +49,97 @@ void LoggerHandler::FilterChanged(EnumLogLevel toggledLevel)
     m_Filter.ApplyFilter();
     messageListMutex.unlock();
     m_FilteredLogMessageList = &m_Filter.GetFilteredList();
+    m_MessageReceived = true;
+}
 
-    TextData *data = g_new0(struct TextData, 1);
-    data->buffer = m_TextBuffer;
+void LoggerHandler::DisplayText()
+{
+    while (true)
+    {
+        if (m_MessageReceived)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(60));
+            TextData *data = g_new0(struct TextData, 1);
+            data->buffer = m_TextBuffer;
+            m_BufferMutex.lock();
+            GetFullText();
+            data->data = m_Buffer;
+            data->sizeOfData = m_BufferSize;
+            gdk_threads_add_idle(AddTextToData, data);
+            m_BufferMutex.unlock();
+            m_MessageReceived = false;
+        }
+    }
+}
+
+void LoggerHandler::SaveMessage(const char *fileName)
+{
+    char buffer[32768];
+    m_BufferMutex.lock();
     GetFullText();
-    data->data = m_Buffer;
-    gdk_threads_add_idle(AddTextToData, data);
+    memcpy(buffer, m_Buffer, 32768);
+    m_BufferMutex.unlock();
+
+    std::string logOutFileName = fileName;
+    logOutFileName += ".log";
+    std::ofstream outLogFile(logOutFileName.c_str());
+    outLogFile << buffer;
+    outLogFile.close();
+
+    char outBuffer[32768] = { 0 };
+    int64_t outIndex = 0;
+    int32_t timeCount = 0;
+    for (int64_t i = 0; buffer[i]; i++)
+    {
+        if (buffer[i] == ' ' and 
+            buffer[i+1] == '-' and 
+            buffer[i+2] == '-' and 
+            buffer[i+3] == '>' and
+            buffer[i+4] == ' ')
+        {
+            outBuffer[outIndex] = ';';
+            i+=4;
+            outIndex++;
+            timeCount = 0;
+        }
+        else
+        {
+            outBuffer[outIndex] = buffer[i];
+            outIndex++;
+            timeCount++;
+            if (timeCount == 19)
+            {
+                outBuffer[outIndex] = ';';
+                outIndex++;
+                i++;
+            }
+        }
+    }
+
+    std::string csvOutFileName = fileName;
+    csvOutFileName += ".csv";
+    std::ofstream outCSVFile(csvOutFileName.c_str());
+    outCSVFile << outBuffer;
+    outCSVFile.close();
 }
 
 gboolean LoggerHandler::AddTextToData(gpointer data)
 {
-    TextData *bufferData = static_cast<TextData*>(data); 
-    gtk_text_buffer_set_text(bufferData->buffer, bufferData->data, -1);
+    TextData *bufferData = static_cast<TextData*>(data);
+    gtk_text_buffer_set_text(bufferData->buffer, bufferData->data, bufferData->sizeOfData);
     g_free(data);
     return G_SOURCE_REMOVE;
 }
 
-void LoggerHandler::OnMessageReceivedCallBack(LogMessage *message)
+void LoggerHandler::OnMessageReceivedCallBack(std::vector<LogMessage*> messageList)
 {
     messageListMutex.lock();
     if (m_LogMessageList.size() < 500)
     {
-        m_LogMessageList.push_back(message);
+        for (int32_t i = 0; i < messageList.size(); i++)
+        {
+            m_LogMessageList.push_back(messageList[i]);
+        }
     }
     else
     {
@@ -76,18 +148,14 @@ void LoggerHandler::OnMessageReceivedCallBack(LogMessage *message)
     messageListMutex.unlock();
 
     m_Filter.ApplyFilter();
-
-    TextData *data = g_new0(struct TextData, 1);
-    data->buffer = m_TextBuffer;
-    GetFullText();
-    data->data = m_Buffer;
-    gdk_threads_add_idle(AddTextToData, data);
+    m_MessageReceived = true;
     // const char *text = gtk_text_buffer_get_text (m_TextBuffer, &start, &end, FALSE);
 }
 
 void LoggerHandler::GetFullText()
 {
     memset(m_Buffer, 0 ,32768);
+    m_BufferSize = 0;
     int32_t index = 0;
     for (int32_t i = 0; i < m_FilteredLogMessageList->size();i++)
     {
@@ -101,22 +169,19 @@ void LoggerHandler::GetFullText()
         const char *levelStr = EnumOperations::ToString((*m_FilteredLogMessageList)[i]->level);
         memcpy(&m_Buffer[index], levelStr, strlen(levelStr));
         index += strlen(levelStr);
-        memcpy(&m_Buffer[index], " -> ", 4);
-        index += 4;
+        memcpy(&m_Buffer[index], " --> ", 5);
+        index += 5;
         memcpy(&m_Buffer[index], (*m_FilteredLogMessageList)[i]->message.c_str(),
         (*m_FilteredLogMessageList)[i]->message.size());
         index += (*m_FilteredLogMessageList)[i]->message.size();
     }
+    m_BufferSize = index;
 }
 
 void LoggerHandler::ClearScreen()
 {
-    TextData *data = g_new0(struct TextData, 1);
-    data->buffer = m_TextBuffer;
     m_LogMessageList.clear();
     m_Filter.ApplyFilter();
     m_FilteredLogMessageList = &m_Filter.GetFilteredList();
-    GetFullText();
-    data->data = m_Buffer;
-    gdk_threads_add_idle(AddTextToData, data);
+    m_MessageReceived = true;
 }

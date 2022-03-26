@@ -4,20 +4,21 @@
 #include <string>
 #include <inttypes.h>
 #include <arpa/inet.h>
+#include <vector>
 #include <thread>
 class LoggerHandler;
 class LogListener
 {
-typedef void (*CallBackFunction)(LogMessage*);
+typedef void (*CallBackFunction)(std::vector<LogMessage*>);
 public:
     LogListener();
     bool StartListening(const char *ipAddress, int32_t port);
     void CloseConnection();
     void Receive();
-    void SetMessageCallBack(void(*callBack)(LogMessage*));
+    void SetMessageCallBack(void(*callBack)(std::vector<LogMessage*>));
 
 private:
-    LogMessage *ParseMessage(const char *message);
+    std::vector<LogMessage*> ParseMessage(const char *message);
     struct sockaddr_in m_ServerAddress;
     int32_t m_SocketFileDescriptor;
     bool m_IsListening;

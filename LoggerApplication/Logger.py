@@ -194,7 +194,7 @@ class LoggerApplication:
         display_message = level_message + message
         self.text.insert(tk.END, display_message)
         end = self.text.index(tk.INSERT)
-        self.__SetFont(logId, first, end)
+        # self.__SetFont(logId, first, end)
         self.text.configure(state = tk.DISABLED)
 
     def __SetFont(self, logId, first, end):

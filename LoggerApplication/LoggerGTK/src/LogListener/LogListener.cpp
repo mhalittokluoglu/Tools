@@ -50,7 +50,7 @@ bool LogListener::StartListening(const char *ipAddr, int32_t port)
 }
 
 
-void LogListener::SetMessageCallBack(void(*callBack)(LogMessage*))
+void LogListener::SetMessageCallBack(void(*callBack)(std::vector<LogMessage*>))
 {
     m_CallBack = callBack;
 }
@@ -74,13 +74,27 @@ void LogListener::Receive()
     }
 }
 
-LogMessage *LogListener::ParseMessage(const char *message)
+std::vector<LogMessage*> LogListener::ParseMessage(const char *message)
 {
-    LogMessage *parsedMessage = new LogMessage();
-    parsedMessage->level = static_cast<EnumLogLevel>(message[0] - 48);
-    const char *rest = &message[1];
-    parsedMessage->message = rest;
-    return parsedMessage;
+    char buffer[1024] = { 0 };
+    for (int32_t i = 0; message[i]; i++)
+    {
+        buffer[i] = message [i];
+    }
+    char *ptr;
+    ptr = strtok(buffer, "\n");
+    std::vector<LogMessage*> logMessageList;
+    while (ptr)
+    {
+        std::string tempMessage =  ptr;
+        LogMessage *logMessage = new LogMessage();
+        logMessage->level = static_cast<EnumLogLevel>(ptr[0] - 48);
+        logMessage->message = &ptr[1];
+        logMessage->message += "\n";
+        logMessageList.push_back(logMessage);
+        ptr = strtok(NULL, "\n");
+    }
+    return logMessageList;
 }
 
 void LogListener::CloseConnection()

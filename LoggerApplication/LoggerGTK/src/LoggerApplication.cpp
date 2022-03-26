@@ -21,7 +21,7 @@ GtkWidget *SaveButton;
 GtkBuilder *Builder;
 
 
-void CallBack(LogMessage *message);
+void CallBack(std::vector<LogMessage *>messageList);
 int main(int argc, char *argv[])
 {
     handler.SetCallBack(CallBack);
@@ -56,7 +56,8 @@ extern "C" void onClearButtonClicked(GtkButton *clearButton)
 
 extern "C" void onSaveButtonClicked(GtkButton *saveButton)
 {
-    std::string fileName = "";
+    system("mkdir -p Logs/");
+    std::string fileName = "Logs/";
     time_t now = time(0);
     tm *ltm = localtime(&now);
     
@@ -71,12 +72,8 @@ extern "C" void onSaveButtonClicked(GtkButton *saveButton)
     fileName += std::to_string(ltm->tm_min);
     fileName += "_";
     fileName += std::to_string(ltm->tm_sec);
-    fileName += ".csv";
 
-    std::ofstream outFile(fileName.c_str());
-    outFile << "Not Implemented :)\n";
-    outFile.close();
-
+    handler.SaveMessage(fileName.c_str());
 }
 
 extern "C" void onStartListeningButtonClicked(GtkButton *startListeningButton)
@@ -119,7 +116,7 @@ extern "C" void onFatalCheckBoxToggled (GtkToggleButton *fatalCheckBox)
     handler.FilterChanged(EnumLogLevel::FATAL);
 }
 
-void CallBack(LogMessage *message)
+void CallBack(std::vector<LogMessage *>messageList)
 {
-    handler.OnMessageReceivedCallBack(message);
+    handler.OnMessageReceivedCallBack(messageList);
 }
